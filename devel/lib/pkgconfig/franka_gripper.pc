@@ -1,0 +1,8 @@
+prefix=/home/badboy/catkin_ws/devel
+
+Name: franka_gripper
+Description: Description of franka_gripper
+Version: 0.9.1
+Cflags: -I/home/badboy/catkin_ws/devel/include -I/home/badboy/catkin_ws/src/franka_ros/franka_gripper/include -I/usr/include
+Libs: -L${prefix}/lib -lfranka_gripper /usr/lib/libfranka.so.0.9.1
+Requires: roscpp message_runtime control_msgs actionlib sensor_msgs xmlrpcpp actionlib_msgs

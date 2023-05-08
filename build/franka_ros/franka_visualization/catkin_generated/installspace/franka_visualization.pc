@@ -1,0 +1,8 @@
+prefix=/home/badboy/catkin_ws/install
+
+Name: franka_visualization
+Description: Description of franka_visualization
+Version: 0.9.1
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: sensor_msgs roscpp

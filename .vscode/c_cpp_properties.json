@@ -1,0 +1,27 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/badboy/catkin_ws/devel/include/**",
+        "/opt/ros/noetic/include/**",
+        "/home/badboy/catkin_ws/src/apriltag_ros/apriltag_ros/include/**",
+        "/home/badboy/catkin_ws/src/franka_ros/franka_control/include/**",
+        "/home/badboy/catkin_ws/src/franka_ros/franka_example_controllers/include/**",
+        "/home/badboy/catkin_ws/src/franka_ros/franka_gazebo/include/**",
+        "/home/badboy/catkin_ws/src/franka_ros/franka_gripper/include/**",
+        "/home/badboy/catkin_ws/src/franka_ros/franka_hw/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++11"
+    }
+  ],
+  "version": 4
+}
