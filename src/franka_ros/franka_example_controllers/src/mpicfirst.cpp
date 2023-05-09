@@ -143,8 +143,8 @@ void _MPIC::computeQP(){
     // ROS_INFO_STREAM( Rbar);
     // ROS_INFO_STREAM( Sbar);
 
-    // ROS_INFO_STREAM( Abar);
-    // ROS_INFO_STREAM( Cbar);
+    ROS_INFO_STREAM( Abar);
+    ROS_INFO_STREAM( Cbar);
     MatrixXd Cw(_N*(_nx+_nu),_nu*_N);
     Cw.setZero();
 
@@ -171,9 +171,9 @@ void _MPIC::computeQP(){
     _Phi.block(0,_N*(3*_nu+_nx),_N*(_nu+_nx),_N*(_nu+_nx)) = -MatrixXd::Identity(_N*(_nu+_nx),_N*(_nu+_nx));
 
 
-    ROS_INFO_STREAM(Cw);
-    ROS_INFO_STREAM(Cw.rows());
-    ROS_INFO_STREAM(Cw.cols());
+    // ROS_INFO_STREAM(Cw);
+    // ROS_INFO_STREAM(Cw.rows());
+    // ROS_INFO_STREAM(Cw.cols());
     MatrixXd Psi(_N*(3*_nu+2*_nx),_N*_nu+(_N+1)*(_nu+_nx));
     Psi.setZero();
     Psi.block(0,0,_N*_nu,_N*_nu) = MatrixXd::Identity(_N*_nu,_N*_nu);

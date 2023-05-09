@@ -165,7 +165,7 @@ void CartesianImpedanceControllerIc::starting(const ros::Time& /*time*/) {
   K.block(0,0,nu,nu) = cartesian_mass_.block(0,0,nu,nu).inverse()*cartesian_damping_.block(0,0,nu,nu);
   K.block(0,nu,nu,nu) = cartesian_mass_.block(0,0,nu,nu).inverse()*cartesian_stiffness_.block(0,0,nu,nu);
   K.block(0,2*nu,nu,nu) = cartesian_mass_.block(0,0,nu,nu).inverse()*Eigen::MatrixXd::Identity(nu,nu);
-
+  ROS_INFO_STREAM(K);
   Eigen::MatrixXd A = Eigen::MatrixXd::Identity(nx,nx);
   A.block(nu,0,nu,nu) = Ts*Eigen::MatrixXd::Identity(nu,nu);
 
@@ -179,23 +179,9 @@ void CartesianImpedanceControllerIc::starting(const ros::Time& /*time*/) {
   Eigen::MatrixXd Xmin = Eigen::MatrixXd::Zero(nx,1);
   Eigen::MatrixXd umax = Eigen::MatrixXd::Zero(nu,1);
   Eigen::MatrixXd umin = Eigen::MatrixXd::Zero(nu,1);
-   ROS_INFO_STREAM(K);
-  ROS_INFO_STREAM( K.transpose()*K);
-  // ROS_INFO_STREAM( A.cols() );
-  //   ROS_INFO_STREAM(B);
-  // ROS_INFO_STREAM( B.rows() );
-  // ROS_INFO_STREAM( B.cols() );
-  // ROS_INFO_STREAM(K);
-  // ROS_INFO_STREAM( K.rows() );
-  // ROS_INFO_STREAM( K.cols() );
-  mpic_ = new MPIC(nx,nu,N);
+
+  mpic_ = new _MPIC(nx,nu,N);
   mpic_->setSystem(A,B,K);
-  // // selectX = select [velocity, position, external torque => no sens for != 0] (0 or 1)
-  // // selectu = select acceleration (0 or 1)
-  // // Xmax = [velocity, position, external torque => no sens for != 0]
-  // // Xmin = [velocity, position, external torque => no sens for != 0]
-  // // umax = max acceleration
-  // // umin = min acceleration
 
   for(auto i = 0ul; i < 6; i++){
     
@@ -208,22 +194,23 @@ void CartesianImpedanceControllerIc::starting(const ros::Time& /*time*/) {
 
     if(vlimits!=0.0){
       Xmax(i,0) = vlimits;
-      Xmin(i,0) = -vlimits;
+      Xmin(i,0) = -0;
     } 
     
     if(plimits!=0.0){
       selectX(nu+i,0) = 1;
       Xmax(nu+i,0) = plimits;
-      Xmin(nu+i,0) = -plimits;
+      Xmin(nu+i,0) = -0;
     }
+    Xmin(7,0) = 0;
     if(alimits!=0.0){
       selectu(i,0) = 1;
       umax(i,0) = alimits;
       umin(i,0) = -alimits;
     }
-  }
-  // ROS_INFO_STREAM(selectX);
-  // ROS_INFO_STREAM( Xmin);
+  } 
+  //  ROS_INFO_STREAM(selectX);
+  //  ROS_INFO_STREAM( Xmin);
 
   mpic_->setTimeStep(Ts);
 
@@ -281,7 +268,7 @@ void CartesianImpedanceControllerIc::update(const ros::Time& /*time*/,
   Eigen::Quaterniond orientation(transform.linear());
   orientation_d_target_.coeffs()<<1,0,0,0;
   Eigen::Matrix<double, 4, 1> _quad,_quad_d;
-  f_ext_hat=jacobian*ext_hat;
+  // f_ext_hat=jacobian*ext_hat;
   _quad<<orientation.w(),orientation.x(),orientation.y(),orientation.z();
   _quad_d<<orientation_d_target_.w(),orientation_d_target_.x(),orientation_d_target_.y(),orientation_d_target_.z();
   Eigen::Vector3d Euler=quatToRotMat(_quad);
@@ -348,13 +335,13 @@ void CartesianImpedanceControllerIc::update(const ros::Time& /*time*/,
     
       msg_pose.pose.position.x=0.306;
       
-      msg_pose.pose.position.y=0.3*sin(sec_)*0;
+      msg_pose.pose.position.y=0.3*sin(sec_)*1;
       msg_pose.pose.position.z=0.476;
       position_d_target_ << msg_pose.pose.position.x, msg_pose.pose.position.y, msg_pose.pose.position.z;
 
       pr<<msg_pose.pose.position.x,msg_pose.pose.position.y, msg_pose.pose.position.z,Euler_p[0],Euler_p[1],Euler_p[2];
-      dpr<<0,0.3*cos(sec_)*0,0,0,0,0;                           
-      ddpr<<0,-0.3*sin(sec_)*0,0,0,0,0; 
+      dpr<<0,0.3*cos(sec_)*1,0,0,0,0;                           
+      ddpr<<0,-0.3*sin(sec_)*1,0,0,0,0; 
       p<<position[0],position[1],position[2],Euler[0],Euler[1],Euler[2];
       dp<<jacobian * dq;
       u=ddpr+cartesian_mass_.inverse()*(cartesian_stiffness_*(-error)+cartesian_damping_*(dpr-dp)-fext);
@@ -379,6 +366,7 @@ void CartesianImpedanceControllerIc::update(const ros::Time& /*time*/,
     _qv(index) = dp[index];
     _te(index) = 0;
   }
+  _te(0) = -0*sin(sec_);
 
   stateX_.head(mpic_->getDimU()) = _qv.head(mpic_->getDimU());
   stateX_.segment(mpic_->getDimU(),mpic_->getDimU()) = _q.head(mpic_->getDimU());
@@ -427,7 +415,7 @@ if(!solved_first_){
                        (nullspace_stiffness_ * (q_d_nullspace_ - q) -
                         (2.0 * sqrt(nullspace_stiffness_)) * dq);
   // Desired torque
-  tau_d << tau_task  +tau_nullspace+ coriolis;
+  tau_d << tau_ic  +tau_nullspace+ coriolis;
   // Eigen::Matrix<double, 6, 1> error;
   // error.head(3) << position - position_d_;
 
@@ -465,10 +453,10 @@ if(!solved_first_){
   K.block(0,0,nu,nu) = cartesian_mass_.block(0,0,nu,nu).inverse()*cartesian_damping_.block(0,0,nu,nu);
   K.block(0,nu,nu,nu) = cartesian_mass_.block(0,0,nu,nu).inverse()*cartesian_stiffness_.block(0,0,nu,nu);
   K.block(0,2*nu,nu,nu) = -cartesian_mass_.block(0,0,nu,nu).inverse()*Eigen::MatrixXd::Identity(nu,nu);
-
-  mpic_->updateK(K);
-  mpic_->computeQP();
-  mpic_->setTimeStep(period.toSec());
+  
+  // mpic_->updateK(K);
+  // mpic_->computeQP();
+  // mpic_->setTimeStep(period.toSec());
   // ROS_INFO_STREAM( K);
   
   FILE * fp;

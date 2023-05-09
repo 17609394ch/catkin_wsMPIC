@@ -104,7 +104,7 @@ protected:
 
   std::string logger_name_;
 
-  MPIC* mpic_;
+  _MPIC* mpic_;
 
 };
 

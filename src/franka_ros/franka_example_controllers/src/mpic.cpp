@@ -116,13 +116,13 @@ void MPIC::updateK(MatrixXd K)
 /*--------------------------------------------------------------------------------*/
 void MPIC::computeQP(){
     /* weight */
-    MatrixXd R = MatrixXd::Identity(_nu,_nu);
+    MatrixXd R = MatrixXd::Identity(_nu,_nu);//公式16
     MatrixXd Q = _K.transpose()*R*_K;
     MatrixXd S = _K.transpose()*R;
 
     /* computing QP matrices */
 
-    MatrixXd IN = MatrixXd::Identity(_N,_N);
+    MatrixXd IN = MatrixXd::Identity(_N,_N);//公式20
     MatrixXd Qbar = kronProduct(IN,Q);
     Qbar.block(0,0,_nx,_nx) = MatrixXd::Zero(_nx,_nx);
     MatrixXd Rbar = kronProduct(IN,R);
