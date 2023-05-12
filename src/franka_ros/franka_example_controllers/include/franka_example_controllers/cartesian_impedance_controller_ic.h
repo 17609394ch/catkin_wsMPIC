@@ -33,6 +33,7 @@
 #include <tf/tf.h>
 #include "franka_example_controllers/mpic.h"
 #include "franka_example_controllers/mpicfirst.h"
+#include <nav_msgs/Path.h>
 namespace franka_example_controllers {
 
 class CartesianImpedanceControllerIc : public controller_interface::MultiInterfaceController<
@@ -88,6 +89,9 @@ class CartesianImpedanceControllerIc : public controller_interface::MultiInterfa
   bool first_run=true;
 
   ros::Publisher Pub_RobotState;
+      ros::Publisher path_desire_pub;
+    ros::Publisher path_robot_pub;
+     geometry_msgs::PoseStamped this_pose_stamped;
   franka_example_controllers::State robot_state_look;
 protected:
   std::vector<std::string> joint_names_;
@@ -105,6 +109,9 @@ protected:
   std::string logger_name_;
 
   _MPIC* mpic_;
+
+    nav_msgs::Path path_desire;
+    nav_msgs::Path path_robot;
 
 };
 

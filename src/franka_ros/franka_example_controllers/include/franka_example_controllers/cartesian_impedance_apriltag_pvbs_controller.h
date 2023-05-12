@@ -102,6 +102,7 @@ Eigen::Quaterniond orientation_target;
     ros::Publisher path_robot_pub;
     nav_msgs::Path path_desire;
     nav_msgs::Path path_robot;
+
     geometry_msgs::PoseStamped this_pose_stamped;
     franka_example_controllers::State robot_state_look;
 

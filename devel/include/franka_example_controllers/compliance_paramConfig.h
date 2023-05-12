@@ -422,9 +422,9 @@ compliance_paramConfig::GroupDescription<compliance_paramConfig::DEFAULT, compli
 //#line 291 "/opt/ros/noetic/lib/python3/dist-packages/dynamic_reconfigure/parameter_generator_catkin.py"
       __min__.translational_stiffness = 0.0;
 //#line 291 "/opt/ros/noetic/lib/python3/dist-packages/dynamic_reconfigure/parameter_generator_catkin.py"
-      __max__.translational_stiffness = 400.0;
+      __max__.translational_stiffness = 600.0;
 //#line 291 "/opt/ros/noetic/lib/python3/dist-packages/dynamic_reconfigure/parameter_generator_catkin.py"
-      __default__.translational_stiffness = 90.0;
+      __default__.translational_stiffness = 500.0;
 //#line 291 "/opt/ros/noetic/lib/python3/dist-packages/dynamic_reconfigure/parameter_generator_catkin.py"
       Default.abstract_parameters.push_back(compliance_paramConfig::AbstractParamDescriptionConstPtr(new compliance_paramConfig::ParamDescription<double>("translational_stiffness", "double", 0, "Cartesian translational stiffness", "", &compliance_paramConfig::translational_stiffness)));
 //#line 291 "/opt/ros/noetic/lib/python3/dist-packages/dynamic_reconfigure/parameter_generator_catkin.py"

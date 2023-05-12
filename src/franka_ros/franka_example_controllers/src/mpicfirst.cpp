@@ -13,7 +13,22 @@
 // limitations under the License.
 
 #include "franka_example_controllers/mpicfirst.h"
+
 #include "ros/ros.h"
+
+void pseudoInverse(const Eigen::MatrixXd& M_, Eigen::MatrixXd& M_pinv_, bool damped = true) {
+  double lambda_ = damped ? 0.2 : 0.0;
+
+  Eigen::JacobiSVD<Eigen::MatrixXd> svd(M_, Eigen::ComputeFullU | Eigen::ComputeFullV);
+  Eigen::JacobiSVD<Eigen::MatrixXd>::SingularValuesType sing_vals_ = svd.singularValues();
+  Eigen::MatrixXd S_ = M_;  // copying the dimensions of M_, its content is not needed.
+  S_.setZero();
+
+  for (int i = 0; i < sing_vals_.size(); i++)
+    S_(i, i) = (sing_vals_(i)) / (sing_vals_(i) * sing_vals_(i) + lambda_ * lambda_);
+
+  M_pinv_ = Eigen::MatrixXd(svd.matrixV() * S_.transpose() * svd.matrixU().transpose());
+}
 MatrixXd kronProduct_(MatrixXd S,MatrixXd X){
     MatrixXd P(S.rows() * X.rows(), S.cols() * X.cols());
     P.setZero();
@@ -116,7 +131,7 @@ void _MPIC::updateK(MatrixXd K)
 /*--------------------------------------------------------------------------------*/
 void _MPIC::computeQP(){
     /* weight */
-    MatrixXd R = MatrixXd::Identity(_nu,_nu);
+    MatrixXd R = 10*MatrixXd::Identity(_nu,_nu);
     MatrixXd Q = _K.transpose()*R*_K;
     MatrixXd S = _K.transpose()*R;
 
@@ -133,31 +148,31 @@ void _MPIC::computeQP(){
     }
     MatrixXd Cbar = MatrixXd::Zero(Cbar_tmp.rows(),Cbar_tmp.cols());
     Cbar.bottomRightCorner(Cbar.rows()-_nx,Cbar.cols()-_nu) = Cbar_tmp.block(0,0,Cbar.rows()-_nx,Cbar.cols()-_nu);
-
+    // ROS_INFO_STREAM( "Cbar"<<Cbar);B
     MatrixXd Abar = MatrixXd::Zero(_nx*_N,_nx);
     for(int i=0; i<_N;i++){
        Abar.block(_nx*i,0,_nx,_nx) = powMat_(_A,i);
     }
-    ROS_INFO_STREAM( _K);
-    ROS_INFO_STREAM( Qbar);
+    // ROS_INFO_STREAM( "K"<<_K);
+    // ROS_INFO_STREAM( "Q"<<Qbar);
     // ROS_INFO_STREAM( Rbar);
     // ROS_INFO_STREAM( Sbar);
 
-    ROS_INFO_STREAM( Abar);
-    ROS_INFO_STREAM( Cbar);
+    // ROS_INFO_STREAM( Abar);
+    // ROS_INFO_STREAM( Cbar);
     MatrixXd Cw(_N*(_nx+_nu),_nu*_N);
     Cw.setZero();
 
     Cw.block(0,0,_N*_nx,Cw.cols()) = Cbar*kronProduct_(MatrixXd::Ones(_N,_N).triangularView<StrictlyLower>(),MatrixXd::Identity(_nu,_nu));
     Cw.block(_nx*_N,0,_N*_nu,Cw.cols()) = kronProduct_(MatrixXd::Ones(_N,_N).triangularView<StrictlyLower>(),MatrixXd::Identity(_nu,_nu));
-
+    // ROS_INFO_STREAM("Cw"<< Cw);
     MatrixXd Aw(_N*(_nx+_nu),_nu+_nx);
     Aw.setZero();
     Aw.block(0,0,_N*_nx,_nx) = Abar;
     Aw.block(0,_nx,_N*_nx,_nu) = Cbar*kronProduct_(MatrixXd::Ones(_N,1),MatrixXd::Identity(_nu,_nu));
     Aw.block(_N*_nx,0,_N*_nu,_nx) = MatrixXd::Zero(_N*_nu,_nx);
     Aw.block(_N*_nx,_nx,_N*_nu,_nu) = kronProduct_(MatrixXd::Ones(_N,1),MatrixXd::Identity(_nu,_nu));
-
+        // ROS_INFO_STREAM("Aw/n"<< Aw);
     MatrixXd Phi(_N*(_nu+_nx),_N*(3*_nu+2*_nx));
     Phi.setZero();
     Phi.block(0,0,_N*(_nu+_nx),_N*(_nu+_nx)) = MatrixXd::Identity(_N*(_nu+_nx),_N*(_nu+_nx));
@@ -171,16 +186,33 @@ void _MPIC::computeQP(){
     _Phi.block(0,_N*(3*_nu+_nx),_N*(_nu+_nx),_N*(_nu+_nx)) = -MatrixXd::Identity(_N*(_nu+_nx),_N*(_nu+_nx));
 
 
-    // ROS_INFO_STREAM(Cw);
-    // ROS_INFO_STREAM(Cw.rows());
-    // ROS_INFO_STREAM(Cw.cols());
+    //  ROS_INFO_STREAM(_Phi);
+    // ROS_INFO_STREAM(_Phi.rows());
+    // ROS_INFO_STREAM(_Phi.cols());
     MatrixXd Psi(_N*(3*_nu+2*_nx),_N*_nu+(_N+1)*(_nu+_nx));
     Psi.setZero();
     Psi.block(0,0,_N*_nu,_N*_nu) = MatrixXd::Identity(_N*_nu,_N*_nu);
     Psi.block(_N*_nu,0,Cw.rows(),Cw.cols()) = Cw;
     Psi.block(_N*_nu,Cw.cols(),Aw.rows(),Aw.cols()) = Aw;
     Psi.block(_N*(2*_nu+_nx),_N*_nu+_nx+_nu,_N*(_nu+_nx),_N*(_nu+_nx)) = MatrixXd::Identity(_N*(_nx+_nu),_N*(_nx+_nu));
-    ROS_INFO_STREAM(Psi);
+
+    MatrixXd TW(_nu*(_N+1),_nu);
+    TW.setZero();
+    for(int i=0; i<_N;i++){
+       TW.block(_nu*(i+1),0,_nu,_nu) = MatrixXd::Identity(_nu,_nu);
+    }
+
+    // ROS_INFO_STREAM("TW"<<TW);
+    MatrixXd _Psi(_N*(_nu*(9*_N+1)),_N*_nu+(_N+1)*(_nu+_nx));
+    _Psi.setZero();
+    _Psi.block(0,0,_N*_nu,_N*_nu) = MatrixXd::Identity(_N*_nu,_N*_nu);
+    _Psi.block(_N*_nu,0,Cw.rows(),Cw.cols()) = Cw;
+    _Psi.block((_N-1)*_nu+Cw.rows(),0,TW.rows(),TW.cols()) = TW;
+    _Psi.block(_N*_nu,Cw.cols(),Aw.rows(),Aw.cols()) = Aw;
+    _Psi.block(_N*(3*_nu+_nx),_N*_nu+_nx+_nu,_N*(_nu+_nx),_N*(_nu+_nx)) = MatrixXd::Identity(_N*(_nx+_nu),_N*(_nx+_nu));
+
+    // ROS_INFO_STREAM(_Psi.rows());
+    
     MatrixXd Q_(_N*(_nx+_nu),_N*(_nx+_nu));
     Q_.setZero();
     Q_.block(0,0,_N*_nu,_N*_nu) = Rbar;
@@ -188,12 +220,15 @@ void _MPIC::computeQP(){
     Q_.block(0,_N*_nu,_N*_nu,_N*_nx) = Sbar.transpose();
     Q_.block(_N*_nu,_N*_nu,_N*_nx,_N*_nx) = Qbar;
 
-    MatrixXd W_ = Psi.transpose()*Phi.transpose()*Q_*Phi*Psi;
+    MatrixXd W_ = _Psi.transpose()*_Phi.transpose()*Q_*_Phi*_Psi;
     MatrixXd H_tmp = W_.block(0,0,_N*_nu,_N*_nu)/2+W_.block(0,0,_N*_nu,_N*_nu).transpose()/2;
     _F = W_.block(_N*_nu,0,(_N+1)*(_nu+_nx),_N*_nu);
 
+    // ROS_INFO_STREAM(W_.rows());
+    // ROS_INFO_STREAM(W_.cols());
     // softening constraints
     _H = Eigen::MatrixXd(H_tmp.rows()+_nSlack,H_tmp.cols()+_nSlack);
+
     for(int i=0;i<_nSlack;i++) _H(i,i) = _costSlack[i];
     _H.topRightCorner(_nSlack,H_tmp.cols()) = Eigen::MatrixXd::Zero(_nSlack,H_tmp.cols());
     _H.bottomLeftCorner(H_tmp.rows(),_nSlack) = Eigen::MatrixXd::Zero(H_tmp.rows(),_nSlack);
@@ -208,7 +243,7 @@ void _MPIC::computeQP(){
     Ibar_tmp.block(0,0,_nx,_nx) = MatrixXd::Zero(_nx,_nx);
     Ibar_tmp.block(_nx,_nx,(_N-1)*_nx,(_N-1)*_nx) = kronProduct_(MatrixXd::Identity(_N-1,_N-1),diagMat_(_selectX,0));
     Ibar_tmp.block(_N*_nx,_N*_nx,_N*_nu,_N*_nu) = kronProduct_(MatrixXd::Identity(_N,_N),diagMat_(_selectu,0));
-
+    // ROS_INFO_STREAM(Ibar_tmp);
     MatrixXd Ibar(2*_N*(_nu+_nx),_N*(_nu+_nx));
     MatrixXd Ibar_sel(2*_N*(_nu+_nx),2*_N*(_nu+_nx));
     Ibar << Ibar_tmp, -Ibar_tmp;
@@ -216,16 +251,18 @@ void _MPIC::computeQP(){
     Ibar_sel.topRightCorner(Ibar_tmp.rows(),Ibar_tmp.cols()) = Eigen::MatrixXd::Zero(Ibar_tmp.rows(),Ibar_tmp.cols());
     Ibar_sel.bottomLeftCorner(Ibar_tmp.rows(),Ibar_tmp.cols()) = Eigen::MatrixXd::Zero(Ibar_tmp.rows(),Ibar_tmp.cols());
     Ibar_sel.bottomRightCorner(Ibar_tmp.rows(),Ibar_tmp.cols()) = Ibar_tmp;
-
+// ROS_INFO_STREAM(Ibar_sel);
     Eigen::MatrixXd Gp = Ibar*Cw;
-
+    // ROS_INFO_STREAM("GP"<<Gp);
     _Gp = Eigen::MatrixXd(Gp.rows()+_nSlack,Gp.cols()+_nSlack);
     _Gp.topLeftCorner(_nSlack,_nSlack) = -Eigen::MatrixXd::Identity(_nSlack,_nSlack);
     _Gp.topRightCorner(_nSlack,Gp.cols()) = Eigen::MatrixXd::Zero(_nSlack,Gp.cols());
     Eigen::MatrixXd M = Ibar_sel*kronProduct_(Eigen::MatrixXd::Ones(Gp.rows()/_nSlack,1),-Eigen::MatrixXd::Identity(_nSlack,_nSlack));
     _Gp.bottomLeftCorner(Gp.rows(),_nSlack) = M;
     _Gp.bottomRightCorner(Gp.rows(),Gp.cols()) = Gp;
-
+// ROS_INFO_STREAM("_Gp"<<_Gp);
+// ROS_INFO_STREAM("_Gp"<<_Gp.rows());
+// ROS_INFO_STREAM("_Gp"<<_Gp.cols());
     _Sp = -Ibar*Aw;
 
     _Wp_sup = MatrixXd::Zero(_N*(_nu+_nx),1);
@@ -233,11 +270,14 @@ void _MPIC::computeQP(){
 
     _Wp_inf.block(0,0,_N*_nx,1) = kronProduct_(MatrixXd::Ones(_N,1),_Xmin);
     _Wp_inf.block(_N*_nx,0,_N*_nu,1) = kronProduct_(MatrixXd::Ones(_N,1),_umin);
+    //    ROS_INFO_STREAM("_Wp_inf1"<<_Wp_inf); 
     _Wp_inf = Ibar_tmp*_Wp_inf;
     _Wp_sup.block(0,0,_N*_nx,1) = kronProduct_(MatrixXd::Ones(_N,1),_Xmax);
     _Wp_sup.block(_N*_nx,0,_N*_nu,1) = kronProduct_(MatrixXd::Ones(_N,1),_umax);
     _Wp_sup = Ibar_tmp*_Wp_sup;
-
+//    ROS_INFO_STREAM("_Xmin"<<_Xmin); 
+// ROS_INFO_STREAM("_Wp_inf"<<_Wp_inf);
+// ROS_INFO_STREAM("_Wp_sup"<<_Wp_sup);
     _lb = MatrixXd::Zero(_Gp.rows()+_nSlack,1);
     _ub = MatrixXd::Zero(_Gp.rows()+_nSlack,1);
     _lb << 0.0*MatrixXd::Ones(_nSlack,1), -1*MatrixXd::Ones(_Gp.rows(),1);
@@ -258,7 +298,9 @@ void _MPIC::firstSolveMPIC(MatrixXd X0,MatrixXd r0){
 
     _W << _Wp_sup,-_Wp_inf;
     _ubA << 0.0*MatrixXd::Ones(_nSlack,1),_W+_Sp*_g_tmp.block(0,0,1,_nx+_nu).transpose();
-
+    // ROS_INFO_STREAM(_ubA);
+    // _Gp.block(_nSlack,1,_nu,_nu)=Eigen::MatrixXd::Identity(_nu,_nu);
+    // _ubA.block(_nSlack,1,_nu,1)=-_uOpt-_B.inverse()*_A*X0;
 //    _lb << 0.0,-100*MatrixXd::Ones(_Gp.rows(),1);
 //    _ub << 10.0,100*MatrixXd::Ones(_Gp.rows(),1);
 
@@ -296,6 +338,30 @@ void _MPIC::updateSolveMPIC(MatrixXd X,MatrixXd rk){
 
     _W << _Wp_sup,-_Wp_inf;
     _ubA << 0.0*MatrixXd::Ones(_nSlack,1),_W+_Sp*_g_tmp.block(0,0,1,_nx+_nu).transpose();
+//    _Gp.block(_nSlack,1,_nu,_nu)=Eigen::MatrixXd::Identity(_nu,_nu);
+    //  _Gp(1,2) = -1;
+    //  _Gp(2,2) = 1;
+    //  _Gp(3,2) = -_Ts;
+    //  _Gp(4,2) = _Ts;
+    // _Gp(5,3) = -_Ts*_Ts/2;
+    // _Gp(4,2) = _Ts;
+    Eigen::MatrixXd a;
+    a = MatrixXd::Zero(_nx,1);
+    Eigen::MatrixXd max=_K*(X-a.transpose())- _uOpt.transpose()+rk.block(0,0,1,_nu).transpose();
+    // ROS_INFO_STREAM("1115"<<max);
+    // ROS_INFO_STREAM("_Gp"<<_Gp);
+    // _ubA(1,0)=0.5 + _uOpt(1);
+    // _ubA(2,0)=0.5 - _uOpt(1);
+    // _ubA(3,0)=0.08 + X(1);
+    // _ubA(4,0)=0.08 - X(1);
+    // _ubA(5,0)=0.088 + X(1)*_Ts  + X(7);
+    // ROS_INFO_STREAM("ub"<<_ubA);
+    Eigen::MatrixXd _B_pinv;
+    pseudoInverse(_B, _B_pinv);
+    // ROS_INFO_STREAM("112"<<_B);
+    // _ubA.block(_nSlack,1,_nu,1)=-_uOpt-_B_pinv.block(5,0,_nx,1)*_A.block(5,0,_nx,1)*X;
+    // ROS_INFO_STREAM("111"<<_A);
+    // ROS_INFO_STREAM("111"<<_A.block(8,0,1,_nx)*X);
 
     _lb << 0.0*MatrixXd::Ones(_nSlack,1), -0.1*MatrixXd::Ones(_Gp.rows(),1);
     _ub << 10.0*MatrixXd::Ones(_nSlack,1), 0.1*MatrixXd::Ones(_Gp.rows(),1);

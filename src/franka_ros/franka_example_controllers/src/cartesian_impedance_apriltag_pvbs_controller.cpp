@@ -138,7 +138,7 @@ void CartesianImpedanceApriltagPvbsController::starting(const ros::Time& /*time*
   orientation_temp.coeffs()<<qtn.getX(),qtn.getY(),qtn.getZ(),qtn.getW();
   transformapriltag=translation_temp*orientation_temp.toRotationMatrix();
 
-  path_desire.header.frame_id="world";
+ path_desire .header.frame_id="world";
   path_desire.header.stamp=ros::Time::now();
   path_robot.header.frame_id="world";
   path_robot.header.stamp=ros::Time::now();

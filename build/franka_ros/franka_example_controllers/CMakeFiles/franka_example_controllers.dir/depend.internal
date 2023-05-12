@@ -442,6 +442,7 @@ franka_ros/franka_example_controllers/CMakeFiles/franka_example_controllers.dir/
  /opt/ros/noetic/include/hardware_interface/joint_command_interface.h
  /opt/ros/noetic/include/hardware_interface/joint_state_interface.h
  /opt/ros/noetic/include/hardware_interface/robot_hw.h
+ /opt/ros/noetic/include/nav_msgs/Path.h
  /opt/ros/noetic/include/pluginlib/class_list_macros.h
  /opt/ros/noetic/include/pluginlib/class_list_macros.hpp
  /opt/ros/noetic/include/ros/advertise_options.h

@@ -50,6 +50,8 @@ bool CartesianImpedanceControllerIc::init(hardware_interface::RobotHW* robot_hw,
       "equilibrium_pose", 20, &CartesianImpedanceControllerIc::equilibriumPoseCallback, this,
       ros::TransportHints().reliable().tcpNoDelay());
   Pub_RobotState = node_handle.advertise<franka_example_controllers::State>("Robot_State",1000);
+  path_desire_pub = node_handle.advertise<nav_msgs::Path>("trajectory",1, true);
+  path_robot_pub = node_handle.advertise<nav_msgs::Path>("trajectory_robot",1, true);
 
   std::string arm_id;
   if (!node_handle.getParam("arm_id", arm_id)) {
@@ -129,7 +131,6 @@ bool CartesianImpedanceControllerIc::init(hardware_interface::RobotHW* robot_hw,
 
   cartesian_stiffness_.setZero();
   cartesian_damping_.setZero();
-
   return true;
 }
 
@@ -157,6 +158,11 @@ void CartesianImpedanceControllerIc::starting(const ros::Time& /*time*/) {
   q_d_nullspace_ = q_initial;
   jacobian_dot.setZero();
 
+   path_desire .header.frame_id="world";
+  path_desire.header.stamp=ros::Time::now();
+  path_robot.header.frame_id="world";
+  path_robot.header.stamp=ros::Time::now();
+
   int nu=6;
   int nx=18;
   int N=1;
@@ -165,7 +171,7 @@ void CartesianImpedanceControllerIc::starting(const ros::Time& /*time*/) {
   K.block(0,0,nu,nu) = cartesian_mass_.block(0,0,nu,nu).inverse()*cartesian_damping_.block(0,0,nu,nu);
   K.block(0,nu,nu,nu) = cartesian_mass_.block(0,0,nu,nu).inverse()*cartesian_stiffness_.block(0,0,nu,nu);
   K.block(0,2*nu,nu,nu) = cartesian_mass_.block(0,0,nu,nu).inverse()*Eigen::MatrixXd::Identity(nu,nu);
-  ROS_INFO_STREAM(K);
+  // ROS_INFO_STREAM(K);
   Eigen::MatrixXd A = Eigen::MatrixXd::Identity(nx,nx);
   A.block(nu,0,nu,nu) = Ts*Eigen::MatrixXd::Identity(nu,nu);
 
@@ -184,7 +190,6 @@ void CartesianImpedanceControllerIc::starting(const ros::Time& /*time*/) {
   mpic_->setSystem(A,B,K);
 
   for(auto i = 0ul; i < 6; i++){
-    
     double plimits = 10;
     double vlimits = 10;
     double alimits = 10;
@@ -194,7 +199,7 @@ void CartesianImpedanceControllerIc::starting(const ros::Time& /*time*/) {
 
     if(vlimits!=0.0){
       Xmax(i,0) = vlimits;
-      Xmin(i,0) = -0;
+      Xmin(i,0) = -vlimits;
     } 
     
     if(plimits!=0.0){
@@ -202,7 +207,7 @@ void CartesianImpedanceControllerIc::starting(const ros::Time& /*time*/) {
       Xmax(nu+i,0) = plimits;
       Xmin(nu+i,0) = -0;
     }
-    Xmin(7,0) = 0;
+    // Xmin(7,0) = 0;
     if(alimits!=0.0){
       selectu(i,0) = 1;
       umax(i,0) = alimits;
@@ -218,7 +223,6 @@ void CartesianImpedanceControllerIc::starting(const ros::Time& /*time*/) {
   mpic_->addConstraintsU(selectu,umax,umin);
   mpic_->computeQP();
 
-
   stateX_ = Eigen::VectorXd::Zero(mpic_->getDimX());
   rk_ = MatrixXd::Zero(mpic_->getHorizon()*(mpic_->getDimU()+mpic_->getDimX()),1);
   rku_tmp_ = MatrixXd::Zero(mpic_->getDimU()*mpic_->getHorizon(),1);
@@ -228,17 +232,43 @@ void CartesianImpedanceControllerIc::starting(const ros::Time& /*time*/) {
   solved_first_ = false;
 // ROS_INFO_STREAM( rk_ );
   FILE * fp;
-  fp = fopen ("/home/badboy/euler.txt", "w+");
-  fprintf(fp,"%d\t%d\t%d\n",0,0,0);
+  fp = fopen ("/home/badboy/outfile/eulerrobot.txt", "w+");
+  // fprintf(fp,"%lf\t%lf\t%lf\n",0,0,0);
   fclose(fp);
-  fp = fopen ("/home/badboy/eulerd.txt", "w+");
-  fprintf(fp,"%d\t%d\t%d\n",0,0,0);
+  fp = fopen ("/home/badboy/outfile/eulerd.txt", "w+"); 
+  // fprintf(fp,"%lf\t%lf\t%lf\n",0,0,0);
   fclose(fp);
-  fp = fopen ("/home/badboy/eulererror.txt", "w+");
-  fprintf(fp,"%d\t%d\t%d\n",0,0,0);
+  fp = fopen ("/home/badboy/outfile/quqtd.txt", "w+");
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\n",0,0,0,0);
   fclose(fp);
-  fp = fopen ("/home/badboy/quqt.txt", "w+");
-  fprintf(fp,"%d\t%d\t%d\t%d\n",0,0,0,0);
+  fp = fopen ("/home/badboy/outfile/eulererror.txt", "w+");
+  // fprintf(fp,"%lf\t%lf\t%lf\n",0,0,0);
+  fclose(fp);
+  fp = fopen ("/home/badboy/outfile/quqtrobot.txt", "w+");
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\n",0,0,0,0);
+  fclose(fp);
+  fp = fopen ("/home/badboy/outfile/error.txt", "w+");//位置误差
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",0,0,0,0,0,0);
+  fclose(fp);
+  fp = fopen ("/home/badboy/outfile/uOpt.txt", "w+");//优化加速度
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",0,0,0,0,0,0);
+  fclose(fp);
+  fp = fopen ("/home/badboy/outfile/ddp.txt", "w+");//优化加速度
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",0,0,0,0,0,0);
+  fclose(fp);
+
+  fp = fopen ("/home/badboy/outfile/Vrobot.txt", "w+");//机械臂末端速度
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",0,0,0,0,0,0);
+  fclose(fp);
+  fp = fopen ("/home/badboy/outfile/Vd.txt", "w+");//机械臂末端期望速度
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",0,0,0,0,0,0);
+  fclose(fp);
+
+  fp = fopen ("/home/badboy/outfile/Probot.txt", "w+");//机械臂末端轨迹
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",0,0,0,0,0,0);
+  fclose(fp);
+  fp = fopen ("/home/badboy/outfile/Pd.txt", "w+");//机械臂末端期望轨迹
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",0,0,0,0,0,0);
   fclose(fp);
 
 }
@@ -296,8 +326,7 @@ void CartesianImpedanceControllerIc::update(const ros::Time& /*time*/,
       first_run=false;
       s_=jacobian;
   }
-  // ROS_INFO_STREAM(xxx);
-   jacobian_dot=(jacobian-s_)/(period.toSec()/filter_params_);
+  jacobian_dot=(jacobian-s_)/(period.toSec()/filter_params_);
   s_=(1-filter_params_)*s_+filter_params_*jacobian;
   sec_+= period.toSec();
   
@@ -310,7 +339,6 @@ void CartesianImpedanceControllerIc::update(const ros::Time& /*time*/,
   Eigen::Matrix<double, 7, 1>  v;
   Eigen::Matrix<double, 6, 1>  fext;
   fext.setZero();
-  // Eigen::Vector3d Euler_p=orientation_d_target_.toRotationMatrix().eulerAngles(2,1,0);
 
   Eigen::Matrix<double, 6, 1> error;
   error.head(3) << position - position_d_;
@@ -320,11 +348,11 @@ void CartesianImpedanceControllerIc::update(const ros::Time& /*time*/,
     orientation.coeffs() << -orientation.coeffs();
   }
   // "difference" quaternion
-  Eigen::Quaterniond error_quaternion(orientation * orientation_d_.inverse());
-  // convert to axis angle
-  Eigen::AngleAxisd error_quaternion_angle_axis(error_quaternion);
-  // compute "orientation error"
-  error.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
+  // Eigen::Quaterniond error_quaternion(orientation * orientation_d_.inverse());
+  // // convert to axis angle
+  // Eigen::AngleAxisd error_quaternion_angle_axis(error_quaternion);
+  // // compute "orientation error"
+  // error.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
   error.tail(3)=(Euler-Euler_p);
   // Eigen::Quaterniond error_quaternion1(orientation * orientation_d_.inverse());
   // Eigen::AngleAxisd error_quaternion_angle_axis(error_quaternion1);
@@ -332,16 +360,17 @@ void CartesianImpedanceControllerIc::update(const ros::Time& /*time*/,
 
   if(line_flag==0)
   {
-    
-      msg_pose.pose.position.x=0.306;
+      double a_=0.1;
+      double b=1;
+      msg_pose.pose.position.x=0.306+a_*cos(sec_/b)+a_;
       
-      msg_pose.pose.position.y=0.3*sin(sec_)*1;
-      msg_pose.pose.position.z=0.476;
+      msg_pose.pose.position.y=a_*sin(sec_/b)*1;
+      msg_pose.pose.position.z=0.5;
       position_d_target_ << msg_pose.pose.position.x, msg_pose.pose.position.y, msg_pose.pose.position.z;
 
       pr<<msg_pose.pose.position.x,msg_pose.pose.position.y, msg_pose.pose.position.z,Euler_p[0],Euler_p[1],Euler_p[2];
-      dpr<<0,0.3*cos(sec_)*1,0,0,0,0;                           
-      ddpr<<0,-0.3*sin(sec_)*1,0,0,0,0; 
+      dpr<<-a_*sin(sec_/b)/b,a_*cos(sec_/b)/b*1,0,0,0,0;                           
+      ddpr<<-a_*cos(sec_/b)/b/b,-a_*sin(sec_/b)/b/b*1,0,0,0,0; 
       p<<position[0],position[1],position[2],Euler[0],Euler[1],Euler[2];
       dp<<jacobian * dq;
       u=ddpr+cartesian_mass_.inverse()*(cartesian_stiffness_*(-error)+cartesian_damping_*(dpr-dp)-fext);
@@ -366,7 +395,7 @@ void CartesianImpedanceControllerIc::update(const ros::Time& /*time*/,
     _qv(index) = dp[index];
     _te(index) = 0;
   }
-  _te(0) = -0*sin(sec_);
+  _te(0) = -5*sin(sec_);
 
   stateX_.head(mpic_->getDimU()) = _qv.head(mpic_->getDimU());
   stateX_.segment(mpic_->getDimU(),mpic_->getDimU()) = _q.head(mpic_->getDimU());
@@ -379,7 +408,7 @@ if(!solved_first_){
   else mpic_->updateSolveMPIC(stateX_,rk_);
 
   if(mpic_->_QPfail)
-    ;
+    ROS_INFO_STREAM("Faild");
   else 
     uOpt_ = mpic_->getuOpt();
 
@@ -391,7 +420,7 @@ if(!solved_first_){
   pseudoInverse(jacobian, jacobian_pinv);
   v=jacobian_pinv*uOpt_-jacobian_pinv*jacobian_dot*dq;
   Eigen::VectorXd tau_ic(7);
-
+// fext=_te;
   tau_ic=mass*v+jacobian.transpose()*fext;
 
 
@@ -454,65 +483,88 @@ if(!solved_first_){
   K.block(0,nu,nu,nu) = cartesian_mass_.block(0,0,nu,nu).inverse()*cartesian_stiffness_.block(0,0,nu,nu);
   K.block(0,2*nu,nu,nu) = -cartesian_mass_.block(0,0,nu,nu).inverse()*Eigen::MatrixXd::Identity(nu,nu);
   
-  // mpic_->updateK(K);
-  // mpic_->computeQP();
-  // mpic_->setTimeStep(period.toSec());
+  mpic_->updateK(K);
+  mpic_->computeQP();
+  mpic_->setTimeStep(period.toSec());
   // ROS_INFO_STREAM( K);
   
-  FILE * fp;
-  fp = fopen ("/home/badboy/euler.txt", "a+");
-  fprintf(fp,"%lf\t%lf\t%lf\n",Euler[0],Euler[1],Euler[2]);
-  fclose(fp);
-  fp = fopen ("/home/badboy/eulerd.txt", "a+"); 
-  fprintf(fp,"%lf\t%lf\t%lf\n",Euler_p[0],Euler_p[1],Euler_p[2]);
-  fclose(fp);
-  fp = fopen ("/home/badboy/quqtm.txt", "a+");
-  fprintf(fp,"%lf\t%lf\t%lf\t%lf\n",orientation_d_.w(),orientation_d_.x(),orientation_d_.y(),orientation_d_.z());
-  fclose(fp);
-  fp = fopen ("/home/badboy/eulererror.txt", "a+");
-  fprintf(fp,"%lf\t%lf\t%lf\n",error[3],error[4],error[5]);
-  fclose(fp);
-  fp = fopen ("/home/badboy/quqt.txt", "a+");
-  fprintf(fp,"%lf\t%lf\t%lf\t%lf\n",orientation.w(),orientation.x(),orientation.y(),orientation.z());
-  fclose(fp);
-  fp = fopen ("/home/badboy/MPICeulererror.txt", "a+");
-  fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",error[0],error[1],error[2],error[3],error[4],error[5]);
-  fclose(fp);
-  for (size_t i = 0; i < 3; i++)
-  {
-    // robot_state_look.error_orientation[i]=Euler[i]-Euler_p[i];
-    robot_state_look.tau__ext[i]=f_ext_hat[i];
-    robot_state_look.tau__ext[i+3]=f_ext_hat[i+3];
-    robot_state_look.error_position[i]=position[i]-position_d_[i];
-    robot_state_look.error_orientation[i]=Euler[i]-Euler_p[i];
-    robot_state_look.position[i]=position[i];
-    robot_state_look.orientation[i]=Euler[i];
-    robot_state_look.position_d[i]=position_d_[i];
-    robot_state_look.orientation_d[i]=Euler_p[i];
-    // robot_state_look.tau_commanded[i+3]=Euler_p[i];  
-    // robot_state_look.tau_commanded[i]=Euler[i]; 
-  }
+  // FILE * fp;
+  // fp = fopen ("/home/badboy/outfile/eulerrobot.txt", "a+");
+  // fprintf(fp,"%lf\t%lf\t%lf\n",Euler[0],Euler[1],Euler[2]);
+  // fclose(fp);
+  // fp = fopen ("/home/badboy/outfile/eulerd.txt", "a+"); 
+  // fprintf(fp,"%lf\t%lf\t%lf\n",Euler_p[0],Euler_p[1],Euler_p[2]);
+  // fclose(fp);
+  // fp = fopen ("/home/badboy/outfile/quqtd.txt", "a+");
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\n",orientation_d_.w(),orientation_d_.x(),orientation_d_.y(),orientation_d_.z());
+  // fclose(fp);
+  // fp = fopen ("/home/badboy/outfile/eulererror.txt", "a+");
+  // fprintf(fp,"%lf\t%lf\t%lf\n",error[3],error[4],error[5]);
+  // fclose(fp);
+  // fp = fopen ("/home/badboy/outfile/quqtrobot.txt", "a+");
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\n",orientation.w(),orientation.x(),orientation.y(),orientation.z());
+  // fclose(fp);
+  // fp = fopen ("/home/badboy/outfile/error.txt", "a+");//位置误差
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",error[0],error[1],error[2],error[3],error[4],error[5]);
+  // fclose(fp);
+  // fp = fopen ("/home/badboy/outfile/uOpt.txt", "a+");//优化加速度
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",uOpt_(0),uOpt_(1),uOpt_(2),uOpt_(3),uOpt_(4),uOpt_(5));
+  // fclose(fp);
+  // fp = fopen ("/home/badboy/outfile/ddp.txt", "a+");//优化加速度
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",ddpr(0),ddpr(1),ddpr(2),ddpr(3),ddpr(4),ddpr(5));
+  // fclose(fp);
+
+  // fp = fopen ("/home/badboy/outfile/Vrobot.txt", "a+");//机械臂末端速度
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",dp(0),dp(1),dp(2),dp(3),dp(4),dp(5));
+  // fclose(fp);
+  // fp = fopen ("/home/badboy/outfile/Vd.txt", "a+");//机械臂末端期望速度
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",dpr(0),dpr(1),dpr(2),dpr(3),dpr(4),dpr(5));
+  // fclose(fp);
+
+  // fp = fopen ("/home/badboy/outfile/Probot.txt", "a+");//机械臂末端轨迹
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",p(0),p(1),p(2),p(3),p(4),p(5));
+  // fclose(fp);
+  // fp = fopen ("/home/badboy/outfile/Pd.txt", "a+");//机械臂末端期望轨迹
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",pr(0),pr(1),pr(2),pr(3),pr(4),pr(5));
+  // fclose(fp);
+  //   fp = fopen ("/home/badboy/outfile/u.txt", "a+");//机械臂末端期望轨迹
+  // fprintf(fp,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",u(0),u(1),u(2),u(3),u(4),u(5));
+  // fclose(fp);
+
+  // for (size_t i = 0; i < 3; i++)
+  // {
+  //   // robot_state_look.error_orientation[i]=Euler[i]-Euler_p[i];
+  //   robot_state_look.tau__ext[i]=f_ext_hat[i];
+  //   robot_state_look.tau__ext[i+3]=f_ext_hat[i+3];
+  //   robot_state_look.error_position[i]=position[i]-position_d_[i];
+  //   robot_state_look.error_orientation[i]=Euler[i]-Euler_p[i];
+  //   robot_state_look.position[i]=position[i];
+  //   robot_state_look.orientation[i]=Euler[i];
+  //   robot_state_look.position_d[i]=position_d_[i];
+  //   robot_state_look.orientation_d[i]=Euler_p[i];
+
+  // }
 
   // ROS_INFO("x:%lf,y=%lf,z=%lf",Euler[0],Euler[1],Euler[2]);
   // ROS_INFO("x:%lf,y=%lf,z=%lf",Euler_p[0],Euler_p[1],Euler_p[2]);
   // tf2_ros::TransformBroadcaster broadcaster;
 
   // geometry_msgs::TransformStamped tfs;
-  Pub_RobotState.publish(robot_state_look);
+  // Pub_RobotState.publish(robot_state_look);
   // this_pose_stamped.header.frame_id="panda_link0";
   // this_pose_stamped.header.stamp=ros::Time::now();
-  // this_pose_stamped.pose.position.x = position_base_target[0];
-  // this_pose_stamped.pose.position.y = position_base_target[1];
-  // this_pose_stamped.pose.position.z = position_base_target[2]; // 二维实现，pose 中没有z，z 是 0
+  // this_pose_stamped.pose.position.x = position_d_[0];
+  // this_pose_stamped.pose.position.y = position_d_[1];
+  // this_pose_stamped.pose.position.z = position_d_[2]; // 二维实现，pose 中没有z，z 是 0
   //   //  |--------- 四元数设置
-  // this_pose_stamped.pose.orientation.x = orientation_base_target.x();
-  // this_pose_stamped.pose.orientation.y = orientation_base_target.y();
-  // this_pose_stamped.pose.orientation.z = orientation_base_target.z();
-  // this_pose_stamped.pose.orientation.w = orientation_base_target.w();
+  // this_pose_stamped.pose.orientation.x = orientation_d_.x();
+  // this_pose_stamped.pose.orientation.y = orientation_d_.y();
+  // this_pose_stamped.pose.orientation.z = orientation_d_.z();
+  // this_pose_stamped.pose.orientation.w = orientation_d_.w();
   // path_desire.poses.push_back(this_pose_stamped);
   // path_desire_pub.publish(path_desire);
 
-  //   this_pose_stamped.pose.position.x = position[0];
+  // this_pose_stamped.pose.position.x = position[0];
   // this_pose_stamped.pose.position.y = position[1];
   // this_pose_stamped.pose.position.z = position[2]; // 二维实现，pose 中没有z，z 是 0
   //   //  |--------- 四元数设置
