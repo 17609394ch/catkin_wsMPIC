@@ -394,6 +394,7 @@ void CartesianImpedanceControllerIc::update(const ros::Time& /*time*/,
     _q(index) = p[index];
     _qv(index) = dp[index];
     _te(index) = 0;
+    
   }
   _te(0) = -5*sin(sec_);
 
