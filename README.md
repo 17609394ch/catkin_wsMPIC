@@ -1,1 +1,1 @@
-# catkin_wsMPIC
+# MPIC
